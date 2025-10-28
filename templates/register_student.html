@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register New Student</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .camera-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        #videoElement {
+            width: 400px;
+            height: 300px;
+            border: 2px solid #ccc;
+            margin-bottom: 10px;
+        }
+        #capturedPhoto {
+            display: none;
+            width: 400px;
+            height: 300px;
+            border: 2px solid #ccc;
+            margin-bottom: 10px;
+        }
+        .camera-buttons {
+            margin: 10px 0;
+        }
+        .camera-buttons button {
+            margin: 0 5px;
+            padding: 8px 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Register New Student</h1>
+        <form id="registerForm">
+            <div class="form-group">
+                <label for="student_id">Student ID:</label>
+                <input type="text" id="student_id" name="student_id" required>
+            </div>
+            <div class="form-group">
+                <label for="name">Full Name:</label>
+                <input type="text" id="name" name="name" required>
+            </div>
+            <div class="camera-container">
+                <video id="videoElement" autoplay playsinline></video>
+                <canvas id="capturedPhoto" style="display: none;"></canvas>
+                <div class="camera-buttons">
+                    <button type="button" id="captureBtn">Capture Photo</button>
+                    <button type="button" id="retakeBtn" style="display: none;">Retake Photo</button>
+                </div>
+            </div>
+            <button type="submit" id="submitBtn" disabled>Register</button>
+        </form>
+        <div id="message"></div>
+        <a href="{{ url_for('admin.admin_dashboard') }}" class="back-link">Back to Dashboard</a>
+    </div>
+
+    <script>
+        let video = null;
+        let stream = null;
+        let photoTaken = false;
+
+        // Initialize camera
+        async function initCamera() {
+            try {
+                video = document.getElementById('videoElement');
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error('Error accessing camera:', err);
+                showMessage('Error accessing camera. Please make sure your camera is connected and you have given permission to use it.', 'error');
+            }
+        }
+
+        // Start camera when page loads
+        document.addEventListener('DOMContentLoaded', initCamera);
+
+        // Capture photo
+        document.getElementById('captureBtn').addEventListener('click', function() {
+            const canvas = document.getElementById('capturedPhoto');
+            const context = canvas.getContext('2d');
+            
+            // Set canvas size to match video
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // Draw video frame to canvas
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Show canvas and retake button, hide video and capture button
+            canvas.style.display = 'block';
+            video.style.display = 'none';
+            this.style.display = 'none';
+            document.getElementById('retakeBtn').style.display = 'inline-block';
+            document.getElementById('submitBtn').disabled = false;
+            
+            photoTaken = true;
+        });
+
+        // Retake photo
+        document.getElementById('retakeBtn').addEventListener('click', function() {
+            // Show video and capture button, hide canvas and retake button
+            document.getElementById('videoElement').style.display = 'block';
+            document.getElementById('capturedPhoto').style.display = 'none';
+            document.getElementById('captureBtn').style.display = 'inline-block';
+            this.style.display = 'none';
+            document.getElementById('submitBtn').disabled = true;
+            
+            photoTaken = false;
+        });
+
+        // Show message
+        function showMessage(message, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = message;
+            messageDiv.className = type;
+        }
+
+        // Handle form submission
+        document.getElementById('registerForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            if (!photoTaken) {
+                showMessage('Please capture a photo first', 'error');
+                return;
+            }
+
+            try {
+                // Get form data
+                const studentId = document.getElementById('student_id').value;
+                const name = document.getElementById('name').value;
+                
+                // Get photo data
+                const canvas = document.getElementById('capturedPhoto');
+                const photoData = canvas.toDataURL('image/jpeg');
+                
+                // Send data to server
+                const response = await fetch('{{ url_for("admin.register_student") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        student_id: studentId,
+                        name: name,
+                        photo: photoData
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMessage('Student registered successfully!', 'success');
+                    // Reset form
+                    this.reset();
+                    // Reset camera view
+                    document.getElementById('retakeBtn').click();
+                } else {
+                    showMessage(data.message || 'Registration failed. Please try again.', 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showMessage('An error occurred. Please try again.', 'error');
+            }
+        });
+
+        // Cleanup when page is closed
+        window.onbeforeunload = () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        };
+    </script>
+</body>
+</html>
