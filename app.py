@@ -18,6 +18,33 @@ Config.init_app(app)
 face_service = DlibFaceService()
 attendance_service = AttendanceService()
 
+@app.route('/api/check-face', methods=['POST'])
+def check_face():
+    try:
+        data = request.get_json()
+        photo_data = data['photo'].split(',')[1] if ',' in data['photo'] else data['photo']
+        photo_bytes = base64.b64decode(photo_data)
+        
+        # Convert to numpy array
+        nparr = np.frombuffer(photo_bytes, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if image is None:
+            return jsonify({'face_detected': False, 'error': 'Invalid image data'})
+        
+        # Use dlib to check for faces
+        encoding = face_service.get_face_encoding(image)
+        face_detected = encoding is not None
+        
+        return jsonify({
+            'face_detected': face_detected,
+            'quality': 'good' if face_detected else 'poor'
+        })
+        
+    except Exception as e:
+        print(f"Error checking face: {str(e)}")
+        return jsonify({'face_detected': False, 'error': str(e)})
+
 # Register blueprints
 app.register_blueprint(student_bp)
 app.register_blueprint(admin_bp)
@@ -47,7 +74,8 @@ def process_frame():
         # Process frame
         recognized_faces = face_service.process_frame(frame)
         
-        # Update attendance for recognized faces
+            # Update attendance for recognized faces
+        attendance_info = []
         for face in recognized_faces:
             student_id = face['student_id']
             name = face['name']
@@ -56,13 +84,22 @@ def process_frame():
             attendance_service.update_last_seen(student_id)
             
             # Mark login if not already logged in
-            attendance_service.mark_login(student_id, name)
+            attendance_marked = attendance_service.mark_login(student_id, name)
+            
+            # Get attendance details from today's records
+            today_attendance = attendance_service.get_today_attendance(student_id)
+            if today_attendance:
+                face['attendance_marked'] = True
+                face['first_timestamp'] = today_attendance['first_timestamp']
+                face['last_timestamp'] = today_attendance['last_timestamp']
+                face['work_hours'] = today_attendance['work_hours']
+            
+            attendance_info.append(face)
         
         return jsonify({
             'success': True,
-            'recognized_faces': recognized_faces
+            'recognized_faces': attendance_info
         })
-        
     except Exception as e:
         return jsonify({
             'success': False,

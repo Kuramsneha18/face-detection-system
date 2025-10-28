@@ -19,6 +19,14 @@ class Config:
     SESSION_EXPIRY = timedelta(days=2)     # Close old session if new login after 2 days
     
     # Face Recognition Settings
+    FACE_RECOGNITION_TOLERANCE = 0.4  # Lower value = more strict matching (0.6 is default)
+    MIN_CONSECUTIVE_FRAMES = 3  # Number of consecutive frames needed for recognition
+    DEBUG_MODE = True  # Enable debug logging
+    # Face Recognition Settings
+    FACE_RECOGNITION_TOLERANCE = 0.6       # Lower is more strict (0.6 is default)
+    DEBUG_MODE = True                      # Enable debug logging
+    
+    # Face Recognition Settings
     FACE_RECOGNITION_TOLERANCE = 0.6       # Lower is more strict
     MIN_FACE_SIZE = 20                     # Minimum face size in pixels
     

@@ -9,6 +9,8 @@ from config import Config
 import base64
 import io
 from PIL import Image
+import numpy as np
+import cv2
 
 admin_bp = Blueprint('admin', __name__)
 attendance_service = AttendanceService()
@@ -38,7 +40,19 @@ def register_student():
                 # Convert to PIL Image
                 image = Image.open(io.BytesIO(photo_bytes))
                 
-                # Save photo
+                # Convert PIL Image to OpenCV format
+                cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+                
+                # Attempt to get face encoding first
+                face_encoding = face_service.get_face_encoding(cv_image)
+                
+                if face_encoding is None:
+                    return jsonify({
+                        'success': False, 
+                        'message': 'No face detected in the image. Please ensure your face is clearly visible and well-lit.'
+                    })
+                
+                # Save photo only if face is detected
                 photo_path = os.path.join(
                     Config.STUDENT_PHOTOS_DIR,
                     f"{student_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"

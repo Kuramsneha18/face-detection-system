@@ -7,6 +7,13 @@ let lastRecognitionTime = Date.now();
 // Sound effects
 const loginSound = new Audio('/static/sounds/login.mp3');
 const logoutSound = new Audio('/static/sounds/logout.mp3');
+const attendanceSound = new Audio('/static/sounds/attendance.mp3');
+
+// Speech synthesis for feedback
+const speak = (text) => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(utterance);
+};
 
 // Initialize the camera feed
 async function initCamera() {
@@ -140,21 +147,59 @@ function handleRecognizedFaces(faces) {
                 return;
             }
             
-            // Check if this is a new recognition (more than 5 seconds since last)
-            if (now - lastRecognitionTime > 5000) {
-                showStatus(`Welcome ${face.name || 'Unknown'}!`, 'success');
-                if (loginSound.readyState >= 2) { // Check if sound is loaded
-                    loginSound.play().catch(err => console.warn('Error playing sound:', err));
+            // Show welcome message instantly for each detected face
+            const name = face.name || 'Unknown';
+            let statusMessage = `Welcome ${name}!`;
+            
+            // Always show the welcome message instantly
+            showStatus(statusMessage, 'success');
+            
+            // Only play sound and update detailed info if enough time has passed
+            if (now - lastRecognitionTime > 2000) {
+                
+                // Add timestamps and work hours if available
+                if (face.attendance_marked) {
+                    const workHours = face.work_hours || 0;
+                    const firstTime = formatTime(face.first_timestamp);
+                    const lastTime = formatTime(face.last_timestamp);
+                    
+                    statusMessage += `\nFirst detected: ${firstTime}`;
+                    statusMessage += `\nLast detected: ${lastTime}`;
+                    statusMessage += `\nWork hours: ${workHours.toFixed(2)} hours`;
+                    
+                    showStatus(statusMessage, 'success');
+                    
+                    // Play attendance sound
+                    if (attendanceSound.readyState >= 2) {
+                        attendanceSound.play().catch(err => console.warn('Error playing sound:', err));
+                    }
+                    
+                    // Provide voice feedback
+                    let speechMessage = `Hello ${name}, `;
+                    if (firstTime === lastTime) {
+                        speechMessage += `Welcome! Your first check-in time is ${firstTime}`;
+                    } else {
+                        speechMessage += `Your total work time is ${workHours.toFixed(1)} hours, from ${firstTime} to ${lastTime}`;
+                    }
+                    speak(speechMessage);
+                } else {
+                    showStatus(statusMessage, 'success');
+                    if (loginSound.readyState >= 2) {
+                        loginSound.play().catch(err => console.warn('Error playing sound:', err));
+                    }
                 }
+                lastRecognitionTime = now;
             }
-            lastRecognitionTime = now;
         });
         
-        // Show timeout message if no faces recognized for more than 5 seconds
-        if (faces.length === 0 && now - lastRecognitionTime > 5000) {
-            showStatus('No face detected', 'error');
-            if (logoutSound.readyState >= 2) { // Check if sound is loaded
-                logoutSound.play().catch(err => console.warn('Error playing sound:', err));
+        // Handle no face detected case
+        if (faces.length === 0) {
+            // Show no face detected message after a brief delay
+            if (now - lastRecognitionTime > 2000) {
+                showStatus('No face detected', 'error');
+                if (logoutSound.readyState >= 2) { // Check if sound is loaded
+                    logoutSound.play().catch(err => console.warn('Error playing sound:', err));
+                }
             }
         }
     } catch (err) {
@@ -168,6 +213,13 @@ function showStatus(message, type) {
     const statusElement = document.getElementById('statusMessage');
     statusElement.textContent = message;
     statusElement.className = `status-message ${type}`;
+}
+
+// Format timestamp to readable time
+function formatTime(timestamp) {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString();
 }
 
 // Initialize everything when page loads

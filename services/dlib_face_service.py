@@ -13,6 +13,7 @@ class DlibFaceService:
         self.known_face_encodings = []
         self.known_face_names = []
         self.known_student_ids = []
+        self.consecutive_frames = {}  # Track consecutive detections
         self.load_known_faces()
     
     def load_known_faces(self):
@@ -28,35 +29,92 @@ class DlibFaceService:
             self.known_student_ids.append(student['student_id'])
     
     def get_face_encoding(self, image):
-        """Get face encoding from image using dlib"""
-        # Convert to RGB if needed
-        if len(image.shape) == 3:
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        
-        # Detect faces
-        faces = self.detector(image)
-        if not faces:
-            return None
+        """Get face encoding for a single image"""
+        try:
+            # Convert to RGB (dlib expects RGB images)
+            if isinstance(image, str):
+                # If image is a file path
+                image = cv2.imread(image)
+                if image is None:
+                    raise ValueError("Could not read image file")
+                
+            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             
-        # Get the first face
-        face = faces[0]
-        
-        # Get face landmarks
-        shape = self.shape_predictor(image, face)
-        
-        # Get face encoding
-        face_encoding = np.array(self.face_rec_model.compute_face_descriptor(image, shape))
-        
-        return face_encoding
+            # Ensure minimum size and quality
+            min_size = 300
+            height, width = rgb_image.shape[:2]
+            if width < min_size or height < min_size:
+                scale = min_size / min(width, height)
+                rgb_image = cv2.resize(rgb_image, (0, 0), fx=scale, fy=scale)
+            
+            # Detect faces with multiple scale factors for better detection
+            faces = []
+            best_quality = 0
+            best_face = None
+            
+            for scale in [1.0, 0.75, 1.5]:  # Try different scales
+                test_img = cv2.resize(rgb_image, (0, 0), fx=scale, fy=scale)
+                detected = self.detector(test_img, 1)  # Second argument is number of upsampling
+                
+                for det in detected:
+                    # Convert coordinates back to original scale
+                    scaled_rect = dlib.rectangle(
+                        int(det.left()/scale), 
+                        int(det.top()/scale),
+                        int(det.right()/scale),
+                        int(det.bottom()/scale)
+                    )
+                    
+                    # Calculate face quality (size and position)
+                    face_width = det.right() - det.left()
+                    face_height = det.bottom() - det.top()
+                    quality = face_width * face_height
+                    
+                    if quality > best_quality:
+                        best_quality = quality
+                        best_face = scaled_rect
+                        faces = [scaled_rect]  # Keep only the best face
+            
+            if not faces:
+                if Config.DEBUG_MODE:
+                    print("No face detected in the image")
+                return None
+                
+            # Get face shape and compute encoding
+            shape = self.shape_predictor(rgb_image, faces[0])
+            face_encoding = self.face_rec_model.compute_face_descriptor(rgb_image, shape)
+            
+            if Config.DEBUG_MODE:
+                print("Face encoding computed successfully")
+            
+            return list(face_encoding)
+        except Exception as e:
+            if Config.DEBUG_MODE:
+                print(f"Error in get_face_encoding: {str(e)}")
+            return None
     
     def process_frame(self, frame):
         """Process a video frame and return recognized faces"""
         # Resize frame for faster face recognition
         height, width = frame.shape[:2]
-        small_frame = cv2.resize(frame, (width//4, height//4))
+        small_frame = cv2.resize(frame, (width//2, height//2))  # Less aggressive resize
         
-        # Get face encoding
-        face_encoding = self.get_face_encoding(small_frame)
+        # Convert frame to RGB (dlib expects RGB)
+        rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+        
+        if Config.DEBUG_MODE:
+            print("Processing frame:", rgb_frame.shape)
+        
+        # Detect faces first
+        faces = self.detector(rgb_frame)
+        if Config.DEBUG_MODE:
+            print(f"Number of faces detected: {len(faces)}")
+        
+        if not faces:
+            return []
+            
+        # Get face encoding for the first face
+        face_encoding = self.get_face_encoding(rgb_frame)
         
         recognized_faces = []
         
@@ -98,7 +156,7 @@ class DlibFaceService:
             student_data = {
                 "student_id": student_id,
                 "name": name,
-                "encoding": encoding.tolist()
+                "encoding": encoding  # encoding is already a list from get_face_encoding
             }
             
             students.append(student_data)

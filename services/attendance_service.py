@@ -8,6 +8,22 @@ from config import Config
 class AttendanceService:
     def __init__(self):
         self.active_sessions = {}  # Keep track of active sessions in memory
+        
+    def get_today_attendance(self, student_id):
+        """Get today's attendance record for a student"""
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            attendance_data = load_json(Config.ATTENDANCE_JSON)
+            
+            if today in attendance_data:
+                for entry in attendance_data[today]:
+                    if entry['student_id'] == student_id:
+                        return entry
+            
+            return None
+        except Exception as e:
+            print(f"Error getting today's attendance: {str(e)}")
+            return None
     
     def mark_login(self, student_id, name):
         """Mark a student's login"""
