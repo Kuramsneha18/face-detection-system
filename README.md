@@ -127,3 +127,9 @@ MIT License - feel free to use for any purpose
 ## Support
 
 For issues and feature requests, please create an issue on GitHub.
+
+
+export FLASK_APP=app.py && export FLASK_ENV=development && flask run --host=0.0.0.0 --port=5001
+
+
+to run the application -- python app.py
